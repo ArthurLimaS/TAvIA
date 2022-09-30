@@ -4,6 +4,9 @@ from deap import base
 from deap import creator
 from deap import tools
 from deap.tools import selNSGA2, ParetoFront
+import matplotlib.pyplot as plt
+import imageio
+import os
 
 
 def init_random_pop(graph, _lambda):
@@ -23,16 +26,6 @@ def init_random_pop(graph, _lambda):
     return pop
 
 
-def crossover(ind1, ind2):
-    cxpoint = np.random.randint(1, len(ind1) - 1)
-    temp_ind = np.copy(ind1)
-
-    ind1[cxpoint:] = ind2[cxpoint:]
-    ind2[cxpoint:] = temp_ind[cxpoint:]
-
-    return ind1, ind2
-
-
 def mutation(graph, ind, indmutpb):
     for i in range(len(ind)):
         r1 = np.random.rand()
@@ -44,7 +37,7 @@ def mutation(graph, ind, indmutpb):
     return ind
 
 
-def crossover_and_mutation(graph, Cbest, mutpb, indmutpb):
+def crossover_and_mutation(graph, Cbest, mutpb, indmutpb, crossover):
     r1 = np.random.randint(0, len(Cbest))
     r2 = np.random.randint(0, len(Cbest))
 
@@ -102,7 +95,7 @@ def nom_dominated_sort_and_sel_n_best_nsga2(big_c, big_f, _mu):
     return Cbest, pf
 
 
-def run(graph, _lambda, _mu, ngen, nconv, mutpb, indmutpb):
+def run(graph, _lambda, _mu, ngen, nconv, mutpb, indmutpb, crossover):
     creator.create("FitnessMax", base.Fitness, weights=(1.0, 1.0))
     creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
 
@@ -111,17 +104,18 @@ def run(graph, _lambda, _mu, ngen, nconv, mutpb, indmutpb):
     convergence = 0
     Cbest = np.zeros(1)
     pf = ParetoFront()
+    filenames = []
 
     while (i <= ngen) \
     and (convergence < nconv):
-        print(i)
+        print("GEN {}".format(i))
         if i == 0:
             C = init_random_pop(graph, _lambda)
         else:
             C[0:_mu] = Cbest[0:_mu]
             j = _mu
             while j < _lambda:
-                ind1, ind2 = crossover_and_mutation(graph, Cbest, mutpb, indmutpb)
+                ind1, ind2 = crossover_and_mutation(graph, Cbest, mutpb, indmutpb, crossover)
                 C[j,:] = ind1
                 j += 1
 
@@ -130,6 +124,38 @@ def run(graph, _lambda, _mu, ngen, nconv, mutpb, indmutpb):
         
         F = fitness(graph, C)
         Cbest, pf = nom_dominated_sort_and_sel_n_best_nsga2(C, F, _mu)
+    
+        # plot the line chart
+        x = []
+        y = []
+        for ind in pf:
+            x.append(ind.fitness.values[1])
+            y.append(ind.fitness.values[0])
+
+        plt.scatter(x, y)
+        plt.ylabel('local_clustering_coefficient')
+        plt.xlabel('separability')
+        plt.suptitle('Generation {}'.format(i))
+        
+        # create file name and append it to a list
+        for frame in range(6):
+            filename = f'imagens/{i}_{frame}.png'
+            filenames.append(filename)
+            
+            # save frame
+            plt.savefig(filename)
+        plt.close()
+        
         i += 1
 
+    # build gif
+    with imageio.get_writer('mygif.gif', mode='I') as writer:
+        for filename in filenames:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+            
+    # Remove files
+    for filename in set(filenames):
+        os.remove(filename)
+    
     return pf
